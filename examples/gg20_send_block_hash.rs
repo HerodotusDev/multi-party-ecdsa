@@ -91,25 +91,22 @@ async fn main() -> Result<()> {
         .await
         .map_err(|e| anyhow!("protocol execution terminated with error: {}", e))?;
 
-    let (i, incoming, outgoing) = join_computation(args.address, &format!("{}-online", args.room))
+    let (_i, incoming, _outgoing) = join_computation(args.address, &format!("{}-online", args.room))
         .await
         .context("join online computation")?;
 
     tokio::pin!(incoming);
-    tokio::pin!(outgoing);
 
-    let (signing, partial_signature) = SignManual::new(
+    let (signing, _partial_signature) = SignManual::new(
         BigInt::from_bytes(&bincode::serialize(&info).unwrap()),
         completed_offline_stage,
     )?;
 
-    let mut partial_signatures: Vec<_> = incoming
+    let partial_signatures: Vec<_> = incoming
         .take(number_of_parties-1)
         .map_ok(|msg| msg.body)
         .try_collect()
         .await?;
-
-    partial_signatures.push(partial_signature);
 
     let signature = signing
         .complete(&partial_signatures)

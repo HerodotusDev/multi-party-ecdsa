@@ -47,22 +47,22 @@ pub struct BlockInfo {
 async fn main() -> Result<()> {
     let args: Cli = Cli::from_args();
 
-    let (_, incoming, outgoing) =
+    let (_i, incoming, _outgoing) =
         join_computation::<BlockInfo>(args.address.clone(), &args.room)
             .await
             .context("join computation")?;
 
     let incoming = incoming.fuse();
     tokio::pin!(incoming);
-    tokio::pin!(outgoing);
     
     // get the receiver, sign the hash and send the signature back to the receiver
     let data_to_sign: Vec<_> = incoming
                 .take(1)
                 .try_collect()
                 .await?;
+    println!("Received to sign: {:?}", data_to_sign);
 
-    let sender = data_to_sign[0].sender;
+    //let sender = data_to_sign[0].sender;
 
     let local_share = tokio::fs::read(args.local_share)
         .await
@@ -78,31 +78,41 @@ async fn main() -> Result<()> {
     tokio::pin!(incoming);
     tokio::pin!(outgoing);
 
+    println!("1------------------");
+
     let signing = OfflineStage::new(i, args.parties, local_share)?;
     let completed_offline_stage = AsyncProtocol::new(signing, incoming, outgoing)
         .run()
         .await
         .map_err(|e| anyhow!("protocol execution terminated with error: {}", e))?;
 
-    let (i, incoming, outgoing) = join_computation(args.address, &format!("{}-online", args.room))
+    println!("2------------------");
+
+    let (i, _incoming, outgoing) = join_computation(args.address, &format!("{}-online", args.room))
         .await
         .context("join online computation")?;
 
-    tokio::pin!(incoming);
     tokio::pin!(outgoing);
 
-    let (signing, partial_signature) = SignManual::new(
+    let (_signing, partial_signature) = SignManual::new(
         BigInt::from_bytes(&bincode::serialize(&data_to_sign[0].body).unwrap()),
         completed_offline_stage,
     )?;
 
+    println!("3------------------");
+
     outgoing
         .send(Msg {
             sender: i,
-            receiver: Some(sender),
-            body: partial_signature,
+            // TODO: receiver to master node
+            //receiver: Some(sender),
+            receiver: None,
+            body: partial_signature.clone(),
         })
         .await?;
+
+    //println!("{:?} sent partial_signature {:?} to {:?}", i, partial_signature, sender);
+    println!("{:?} sent partial_signature {:?}", i, partial_signature);
 
     Ok(())
 }
