@@ -2,7 +2,7 @@ use anyhow::{anyhow, Context, Result};
 use structopt::StructOpt;
 
 mod gg20_sm_client;
-use gg20_sm_client::join_computation;
+use gg20_sm_client::{join_computation, BlockInfo};
 
 use std::path::PathBuf;
 
@@ -16,20 +16,6 @@ use curv::arithmetic::Converter;
 use curv::BigInt;
 
 use futures::{SinkExt, StreamExt, TryStreamExt};
-
-use serde::{Serialize, Deserialize};
-
-//bytes4 - method selector
-//bytes32 - parenthash
-//uint256 - blocknumber
-//address - verifying contract address
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct BlockInfo {
-    selector: String,
-    parent_hash: String,
-    blocknumber: String,
-    address: String,
-}
 
 #[derive(StructOpt, Debug)]
 struct Cli {
@@ -56,9 +42,9 @@ async fn main() -> Result<()> {
 
     let info = BlockInfo {
         selector: "sel".to_string(),
-        parent_hash: "0x01".to_string(),
-        blocknumber: "420".to_string(),
-        address: "vitalikkkkk.eth".to_string(),
+        parent_hash: "0xf26200a961237db4c3d3d00af839a9a220aa5c3d5301c07ba0143d4b05b1436d".to_string(),
+        blocknumber: "16284668".to_string(),
+        address: "vitalik.eth".to_string(),
     };
 
     outgoing

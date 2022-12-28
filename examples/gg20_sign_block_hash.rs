@@ -1,16 +1,17 @@
 use anyhow::{anyhow, Context, Result};
 use structopt::StructOpt;
 
-use futures::{SinkExt, StreamExt, TryStreamExt};
-use serde::{Serialize, Deserialize};
+use dotenv::dotenv;
+use regex::Regex;
 
+use futures::{SinkExt, StreamExt, TryStreamExt};
 use curv::arithmetic::Converter;
 use curv::BigInt;
 
 use std::path::PathBuf;
 
 mod gg20_sm_client;
-use gg20_sm_client::join_computation;
+use gg20_sm_client::{join_computation, BlockInfo};
 
 use multi_party_ecdsa::protocols::multi_party_ecdsa::gg_2020::state_machine::sign::{
     OfflineStage, SignManual,
@@ -30,21 +31,10 @@ struct Cli {
     parties: Vec<u16>,
 }
 
-//bytes4 - method selector
-//bytes32 - parenthash
-//uint256 - blocknumber
-//address - verifying contract address
-#[derive(Debug, Serialize, Deserialize)]
-pub struct BlockInfo {
-    selector: String,
-    parent_hash: String,
-    blocknumber: String,
-    address: String,
-}
-
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    dotenv().ok();
     let args: Cli = Cli::from_args();
 
     let (_i, incoming, _outgoing) =
@@ -61,6 +51,24 @@ async fn main() -> Result<()> {
                 .try_collect()
                 .await?;
     println!("Received to sign: {:?}", data_to_sign);
+
+    let block_number = &data_to_sign[0].body.blocknumber;
+    let expected_hash = &data_to_sign[0].body.parent_hash;
+
+    let client = reqwest::Client::new();
+    let rpc = std::env::var("ETHEREUM_RPC").unwrap();
+
+    let res = client.post(&rpc)
+        .body(format!(r#"{{"jsonrpc":"2.0","method":"eth_getBlockByNumber","params":["{}", true],"id":1}}"#, block_number))
+        .send()?
+        .text()?;
+
+    let re = Regex::new(r#""parentHash":"([^"]+)"#).unwrap();
+    let captures = re.captures(&res).unwrap();
+    let hash = &captures[1];
+
+    // Verifying hash
+    assert_eq!(expected_hash, hash, "Invalid hash");
 
     //let sender = data_to_sign[0].sender;
 

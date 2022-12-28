@@ -7,6 +7,18 @@ use structopt::StructOpt;
 
 use round_based::Msg;
 
+//bytes4 - method selector
+//bytes32 - parenthash
+//uint256 - blocknumber
+//address - verifying contract address
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct BlockInfo {
+    pub selector: String,
+    pub parent_hash: String,
+    pub blocknumber: String,
+    pub address: String,
+}
+
 pub async fn join_computation<M>(
     address: surf::Url,
     room_id: &str,
