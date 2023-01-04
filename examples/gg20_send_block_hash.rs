@@ -2,7 +2,7 @@ use anyhow::{anyhow, Context, Result};
 use structopt::StructOpt;
 
 mod gg20_sm_client;
-use gg20_sm_client::{join_computation, BlockInfo};
+use gg20_sm_client::{join_computation, Claims};
 
 use std::path::PathBuf;
 
@@ -16,6 +16,8 @@ use curv::arithmetic::Converter;
 use curv::BigInt;
 
 use futures::{SinkExt, StreamExt, TryStreamExt};
+
+use jsonwebtoken::{Header, Validation, Algorithm, decode, encode, DecodingKey, EncodingKey};
 
 #[derive(StructOpt, Debug)]
 struct Cli {
@@ -33,19 +35,30 @@ struct Cli {
 async fn main() -> Result<()> {
     let args: Cli = Cli::from_args();
 
+    //TODO remove encoding. Should be done by the API
+    let key = b"secret";
+    let claims = Claims {
+        chain: "ethereum".to_string(),
+        parent_hash: "0xf26200a961237db4c3d3d00af839a9a220aa5c3d5301c07ba0143d4b05b1436d".to_string(),
+        blocknumber: "16284668".to_string(),
+        exp: 10000000000
+    };
+
+    let token = encode(&Header::default(), &claims, &EncodingKey::from_secret(key)).unwrap();
+    println!("JWT token: {:?}", token);
+
+    let validation = Validation::new(Algorithm::HS256);
+    let token_data = decode::<Claims>(&token, &DecodingKey::from_secret(key) , &validation).unwrap();
+    println!("Decoded token: {:?}", token_data);
+
+    let info = token_data.claims;
+
     let (i, _, outgoing) =
         join_computation(args.address.clone(), &args.room)
             .await
             .context("join computation")?;
 
     tokio::pin!(outgoing);
-
-    let info = BlockInfo {
-        selector: "sel".to_string(),
-        parent_hash: "0xf26200a961237db4c3d3d00af839a9a220aa5c3d5301c07ba0143d4b05b1436d".to_string(),
-        blocknumber: "16284668".to_string(),
-        address: "vitalik.eth".to_string(),
-    };
 
     outgoing
         .send(Msg {

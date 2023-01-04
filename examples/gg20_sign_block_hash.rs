@@ -13,7 +13,7 @@ use curv::BigInt;
 use std::path::PathBuf;
 
 mod gg20_sm_client;
-use gg20_sm_client::{join_computation, BlockInfo};
+use gg20_sm_client::{join_computation, Claims};
 
 use multi_party_ecdsa::protocols::multi_party_ecdsa::gg_2020::state_machine::sign::{
     OfflineStage, SignManual,
@@ -45,7 +45,7 @@ async fn main() -> Result<()> {
     let local_share: LocalKey<Secp256k1> = serde_json::from_slice(&local_share).context("parse local share")?;
 
     let (_i, incoming, _outgoing) =
-        join_computation::<BlockInfo>(args.address.clone(), &args.room)
+        join_computation::<Claims>(args.address.clone(), &args.room)
             .await
             .context("join computation")?;
 

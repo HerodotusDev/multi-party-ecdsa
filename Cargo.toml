@@ -43,6 +43,7 @@ derivative = "2"
 sha2 = "0.9"
 dotenv = "0.15.0"
 regex = "1.7.0"
+jsonwebtoken = "8.2.0"
 
 [dependencies.paillier]
 version = "0.4.2"
