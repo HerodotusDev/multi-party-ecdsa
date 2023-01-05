@@ -17,7 +17,7 @@ use curv::BigInt;
 
 use futures::{SinkExt, StreamExt, TryStreamExt};
 
-use jsonwebtoken::{Header, Validation, Algorithm, decode, encode, DecodingKey, EncodingKey};
+use jsonwebtoken::{Validation, Algorithm, decode, DecodingKey};
 
 #[derive(StructOpt, Debug)]
 struct Cli {
@@ -35,83 +35,94 @@ struct Cli {
 async fn main() -> Result<()> {
     let args: Cli = Cli::from_args();
 
-    //TODO remove encoding. Should be done by the API
-    let key = b"secret";
-    let claims = Claims {
-        chain: "ethereum".to_string(),
-        parent_hash: "0xf26200a961237db4c3d3d00af839a9a220aa5c3d5301c07ba0143d4b05b1436d".to_string(),
-        blocknumber: "16284668".to_string(),
-        exp: 10000000000
-    };
-
-    let token = encode(&Header::default(), &claims, &EncodingKey::from_secret(key)).unwrap();
-    println!("JWT token: {:?}", token);
-
-    let validation = Validation::new(Algorithm::HS256);
-    let token_data = decode::<Claims>(&token, &DecodingKey::from_secret(key) , &validation).unwrap();
-    println!("Decoded token: {:?}", token_data);
-
-    let info = token_data.claims;
-
-    let (i, _, outgoing) =
-        join_computation(args.address.clone(), &args.room)
-            .await
-            .context("join computation")?;
-
-    tokio::pin!(outgoing);
-
-    outgoing
-        .send(Msg {
-            sender: i,
-            receiver: None,
-            body: info.clone(),
-        })
-        .await?;
-
-    let local_share = tokio::fs::read(args.local_share)
-        .await
-        .context("cannot read local share")?;
-    let local_share = serde_json::from_slice(&local_share).context("parse local share")?;
-
-    let (i, incoming, outgoing) =
-        join_computation(args.address.clone(), &format!("{}-offline", args.room))
+    let (_i, incoming, _outgoing) =
+        join_computation::<String>(args.address.clone(), &format!("{}-jwt", args.room))
             .await
             .context("join offline computation")?;
 
-    let incoming = incoming.fuse();
-    tokio::pin!(incoming);
-    tokio::pin!(outgoing);
-
-    let number_of_parties = args.parties.len();
-
-    let signing = OfflineStage::new(i, args.parties, local_share)?;
-    let completed_offline_stage = AsyncProtocol::new(signing, incoming, outgoing)
-        .run()
-        .await
-        .map_err(|e| anyhow!("protocol execution terminated with error: {}", e))?;
-
-    let (_i, incoming, _outgoing) = join_computation(args.address, &format!("{}-online", args.room))
-        .await
-        .context("join online computation")?;
-
     tokio::pin!(incoming);
 
-    let (signing, _partial_signature) = SignManual::new(
-        BigInt::from_bytes(&bincode::serialize(&info).unwrap()),
-        completed_offline_stage,
-    )?;
+    while let Some(jwt) = incoming.next().await {
+        let key = b"secret";
+        // Encoded by the API
+        //let claims = Claims {
+            //chain: "ethereum".to_string(),
+            //parent_hash: "0xf26200a961237db4c3d3d00af839a9a220aa5c3d5301c07ba0143d4b05b1436d".to_string(),
+            //blocknumber: "16284668".to_string(),
+            //exp: 10000000000
+        //};
+        //let token = encode(&Header::default(), &claims, &EncodingKey::from_secret(key)).unwrap();
 
-    let partial_signatures: Vec<_> = incoming
-        .take(number_of_parties-1)
-        .map_ok(|msg| msg.body)
-        .try_collect()
-        .await?;
+        let token = jwt.unwrap().body;
 
-    let signature = signing
-        .complete(&partial_signatures)
-        .context("online stage failed")?;
-    let signature = serde_json::to_string(&signature).context("serialize signature")?;
-    println!("{}", signature);
+        println!("JWT token: {:?}", token);
+
+        let validation = Validation::new(Algorithm::HS256);
+        let token_data = decode::<Claims>(&token, &DecodingKey::from_secret(key) , &validation).unwrap();
+        println!("Decoded token: {:?}", token_data);
+
+        let info = token_data.claims;
+
+        let (i, _, outgoing) =
+            join_computation(args.address.clone(), &args.room)
+                .await
+                .context("join computation")?;
+
+        tokio::pin!(outgoing);
+
+        outgoing
+            .send(Msg {
+                sender: i,
+                receiver: None,
+                body: info.clone(),
+            })
+            .await?;
+
+        let local_share = tokio::fs::read(args.local_share.clone())
+            .await
+            .context("cannot read local share")?;
+        let local_share = serde_json::from_slice(&local_share).context("parse local share")?;
+
+        let (i, incoming, outgoing) =
+            join_computation(args.address.clone(), &format!("{}-offline", args.room))
+                .await
+                .context("join offline computation")?;
+
+        let incoming = incoming.fuse();
+        tokio::pin!(incoming);
+        tokio::pin!(outgoing);
+
+        let number_of_parties = args.parties.len();
+
+        let signing = OfflineStage::new(i, args.parties.clone(), local_share)?;
+        let completed_offline_stage = AsyncProtocol::new(signing, incoming, outgoing)
+            .run()
+            .await
+            .map_err(|e| anyhow!("protocol execution terminated with error: {}", e))?;
+
+        let (_i, incoming, _outgoing) = join_computation(args.address.clone(), &format!("{}-online", args.room))
+            .await
+            .context("join online computation")?;
+
+        tokio::pin!(incoming);
+
+        let (signing, _partial_signature) = SignManual::new(
+            BigInt::from_bytes(&bincode::serialize(&info).unwrap()),
+            completed_offline_stage,
+        )?;
+
+        let partial_signatures: Vec<_> = incoming
+            .take(number_of_parties-1)
+            .map_ok(|msg| msg.body)
+            .try_collect()
+            .await?;
+
+        let signature = signing
+            .complete(&partial_signatures)
+            .context("online stage failed")?;
+        let signature = serde_json::to_string(&signature).context("serialize signature")?;
+        println!("{}", signature);
+    }
 
     Ok(())
 }
