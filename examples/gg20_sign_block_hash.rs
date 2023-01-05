@@ -51,6 +51,8 @@ async fn main() -> Result<()> {
 
     tokio::pin!(incoming);
 
+    let mut stream_index = 0;
+
     // fetch all the blocks info
     while let Some(block_info) = incoming.next().await {
         let data_to_sign = block_info.unwrap();
@@ -77,7 +79,7 @@ async fn main() -> Result<()> {
         //let sender = data_to_sign.sender;
         
         let (i, incoming, outgoing) =
-            join_computation(args.address.clone(), &format!("{}-offline", args.room))
+            join_computation(args.address.clone(), &format!("{}-{}-offline", args.room, stream_index))
                 .await
                 .context("join offline computation")?;
 
@@ -95,9 +97,11 @@ async fn main() -> Result<()> {
 
         println!("2------------------ Offline completed ");
 
-        let (i, _incoming, outgoing) = join_computation(args.address.clone(), &format!("{}-online", args.room))
+        let (i, _incoming, outgoing) = join_computation(args.address.clone(), &format!("{}-{}-online", args.room, stream_index))
             .await
             .context("join online computation")?;
+
+        stream_index += 1;
 
         tokio::pin!(outgoing);
 

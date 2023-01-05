@@ -42,6 +42,8 @@ async fn main() -> Result<()> {
 
     tokio::pin!(incoming);
 
+    let mut stream_index = 0;
+
     while let Some(jwt) = incoming.next().await {
         let key = b"secret";
         // Encoded by the API
@@ -84,7 +86,7 @@ async fn main() -> Result<()> {
         let local_share = serde_json::from_slice(&local_share).context("parse local share")?;
 
         let (i, incoming, outgoing) =
-            join_computation(args.address.clone(), &format!("{}-offline", args.room))
+            join_computation(args.address.clone(), &format!("{}-{}-offline", args.room, stream_index))
                 .await
                 .context("join offline computation")?;
 
@@ -100,9 +102,11 @@ async fn main() -> Result<()> {
             .await
             .map_err(|e| anyhow!("protocol execution terminated with error: {}", e))?;
 
-        let (_i, incoming, _outgoing) = join_computation(args.address.clone(), &format!("{}-online", args.room))
+        let (_i, incoming, _outgoing) = join_computation(args.address.clone(), &format!("{}-{}-online", args.room, stream_index))
             .await
             .context("join online computation")?;
+
+        stream_index += 1;
 
         tokio::pin!(incoming);
 
@@ -121,7 +125,7 @@ async fn main() -> Result<()> {
             .complete(&partial_signatures)
             .context("online stage failed")?;
         let signature = serde_json::to_string(&signature).context("serialize signature")?;
-        println!("{}", signature);
+        println!("Signature: {}", signature);
     }
 
     Ok(())
