@@ -53,6 +53,8 @@ async fn main() -> Result<()> {
 
     let mut stream_index = 0;
 
+    let client = reqwest::Client::new();
+
     // fetch all the blocks info
     while let Some(block_info) = incoming.next().await {
         let data_to_sign = block_info.unwrap();
@@ -61,7 +63,6 @@ async fn main() -> Result<()> {
         let block_number = &data_to_sign.body.blocknumber;
         let expected_hash = &data_to_sign.body.parent_hash;
 
-        let client = reqwest::Client::new();
         let rpc = std::env::var("ETHEREUM_RPC").unwrap();
 
         let res = client.post(&rpc)
@@ -122,7 +123,6 @@ async fn main() -> Result<()> {
             })
             .await?;
 
-        //println!("{:?} sent partial_signature {:?} to {:?}", i, partial_signature, sender);
         println!("{:?} sent partial_signature {:?}", i, partial_signature);
     }
     

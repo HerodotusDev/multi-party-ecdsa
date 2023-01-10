@@ -6,6 +6,8 @@ use gg20_sm_client::{join_computation, Claims};
 
 use std::path::PathBuf;
 
+use dotenv::dotenv;
+
 use multi_party_ecdsa::protocols::multi_party_ecdsa::gg_2020::state_machine::sign::{
     OfflineStage, SignManual,
 };
@@ -35,6 +37,7 @@ struct Cli {
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    dotenv().ok();
     let args: Cli = Cli::from_args();
 
     let (_i, incoming, _outgoing) =
@@ -45,24 +48,18 @@ async fn main() -> Result<()> {
     tokio::pin!(incoming);
 
     let mut stream_index = 0;
+    let number_of_parties = args.parties.len();
+    
+    let key = std::env::var("JWT_SECRET").unwrap();
+    
+    let client = reqwest::Client::new();
 
     while let Some(jwt) = incoming.next().await {
-        let key = b"secret";
-        // Encoded by the API
-        //let claims = Claims {
-            //chain: "ethereum".to_string(),
-            //parent_hash: "0xf26200a961237db4c3d3d00af839a9a220aa5c3d5301c07ba0143d4b05b1436d".to_string(),
-            //blocknumber: "16284668".to_string(),
-            //exp: 10000000000
-        //};
-        //let token = encode(&Header::default(), &claims, &EncodingKey::from_secret(key)).unwrap();
-
         let token = jwt.unwrap().body;
-
         println!("JWT token: {:?}", token);
 
         let validation = Validation::new(Algorithm::HS256);
-        let token_data = decode::<Claims>(&token, &DecodingKey::from_secret(key) , &validation).unwrap();
+        let token_data = decode::<Claims>(&token, &DecodingKey::from_secret(key.as_bytes()) , &validation).unwrap();
         println!("Decoded token: {:?}", token_data);
 
         let info = token_data.claims;
@@ -95,8 +92,6 @@ async fn main() -> Result<()> {
         let incoming = incoming.fuse();
         tokio::pin!(incoming);
         tokio::pin!(outgoing);
-
-        let number_of_parties = args.parties.len();
 
         let signing = OfflineStage::new(i, args.parties.clone(), local_share)?;
         let completed_offline_stage = AsyncProtocol::new(signing, incoming, outgoing)
@@ -131,11 +126,9 @@ async fn main() -> Result<()> {
         let s = BigInt::from_bytes(signature.s.to_bytes().as_ref()).to_str_radix(16);
         let v = signature.recid;
 
-        let client = reqwest::Client::new();
         client.post(&args.submission.to_string())
             .body(format!(r#"{{"r": {}, "s": {}, "v": {}}}"#, r, s, v))
             .send()?;
-
 
         let signature = serde_json::to_string(&signature).context("serialize signature")?;
         println!("Signature: {}", signature);
