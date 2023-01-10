@@ -23,6 +23,8 @@ use jsonwebtoken::{Validation, Algorithm, decode, DecodingKey};
 struct Cli {
     #[structopt(short, long, default_value= "http://localhost:8000/")]
     address: surf::Url,
+    #[structopt(short, long)]
+    submission: surf::Url,
     #[structopt(short, long, default_value = "block-hashes")]
     room: String,
     #[structopt(short, long)]
@@ -124,6 +126,17 @@ async fn main() -> Result<()> {
         let signature = signing
             .complete(&partial_signatures)
             .context("online stage failed")?;
+
+        let r = BigInt::from_bytes(signature.r.to_bytes().as_ref()).to_str_radix(16);
+        let s = BigInt::from_bytes(signature.s.to_bytes().as_ref()).to_str_radix(16);
+        let v = signature.recid;
+
+        let client = reqwest::Client::new();
+        client.post(&args.submission.to_string())
+            .body(format!(r#"{{"r": {}, "s": {}, "v": {}}}"#, r, s, v))
+            .send()?;
+
+
         let signature = serde_json::to_string(&signature).context("serialize signature")?;
         println!("Signature: {}", signature);
     }
